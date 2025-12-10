@@ -1,18 +1,22 @@
 package remove_permision;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.EventQueue;
 import java.awt.Font;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
 import java.io.File;
+import java.util.List;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
+import javax.swing.TransferHandler;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import org.apache.pdfbox.Loader;
@@ -20,45 +24,69 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 
 public class Remove_permision extends JFrame {
 
-    /**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	private JTextArea log;
+    private static final long serialVersionUID = 1L;
     private File[] selectedFiles;
 
     public Remove_permision() {
-        setTitle("Quitar Permisos de PDF – PDFBox");
+        setTitle("Quitar Permisos PDF – PDFBox");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(600, 450);
+        setSize(520, 330);
         setLocationRelativeTo(null);
 
         initUI();
     }
 
     private void initUI() {
-        JPanel panel = new JPanel();
-        JButton btnSelect = new JButton("Seleccionar PDFs");
-        JButton btnProcess = new JButton("Quitar Permisos");
 
-        btnSelect.setFocusable(false);
-        btnProcess.setFocusable(false);
+        // --- DROPZONE ---
+        JPanel dropZone = new JPanel();
+        dropZone.setPreferredSize(new Dimension(480, 180));
+        dropZone.setBackground(new Color(245, 245, 245));
+        dropZone.setBorder(BorderFactory.createDashedBorder(Color.GRAY));
 
-        btnSelect.addActionListener(this::selectFiles);
-        btnProcess.addActionListener(this::processFiles);
+        JLabel label = new JLabel("Arrastra aquí tus archivos PDF");
+        label.setFont(new Font("SansSerif", Font.PLAIN, 16));
+        dropZone.add(label);
 
-        panel.add(btnSelect);
-        panel.add(btnProcess);
+        dropZone.setTransferHandler(new TransferHandler() {
+            @Override
+            public boolean canImport(TransferHandler.TransferSupport support) {
+                return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            }
 
-        log = new JTextArea();
-        log.setEditable(false);
-        log.setFont(new Font("Consolas", Font.PLAIN, 14));
+            @Override
+            public boolean importData(TransferHandler.TransferSupport support) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    List<File> files = (List<File>) support.getTransferable()
+                            .getTransferData(DataFlavor.javaFileListFlavor);
 
-        JScrollPane scroll = new JScrollPane(log);
-        scroll.setPreferredSize(new Dimension(580, 350));
+                    selectedFiles = files.toArray(new File[0]);
+                    label.setText("PDFs cargados: " + selectedFiles.length);
 
-        add(panel, BorderLayout.NORTH);
-        add(scroll, BorderLayout.CENTER);
+                } catch (Exception ex) {
+                    label.setText("Error al cargar archivos");
+                }
+                return true;
+            }
+        });
+
+        // --- PANEL DE BOTONES INFERIOR ---
+        JPanel bottomPanel = new JPanel();
+
+        JButton btnBrowse = new JButton("Seleccionar archivos");
+        btnBrowse.setFocusable(false);
+        btnBrowse.addActionListener(this::selectFiles);
+
+        JButton processBtn = new JButton("Quitar permisos y guardar");
+        processBtn.setFocusable(false);
+        processBtn.addActionListener(this::processFiles);
+
+        bottomPanel.add(btnBrowse);
+        bottomPanel.add(processBtn);
+
+        add(dropZone, BorderLayout.CENTER);
+        add(bottomPanel, BorderLayout.SOUTH);
     }
 
     private void selectFiles(ActionEvent e) {
@@ -71,47 +99,63 @@ public class Remove_permision extends JFrame {
 
         if (result == JFileChooser.APPROVE_OPTION) {
             selectedFiles = fileChooser.getSelectedFiles();
-
-            log.append("Archivos seleccionados:\n");
-            for (File f : selectedFiles) {
-                log.append(" - " + f.getName() + "\n");
-            }
-            log.append("\n");
+            JOptionPane.showMessageDialog(this,
+                    "Se han cargado " + selectedFiles.length + " PDF(s).",
+                    "Archivos cargados",
+                    JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
     private void processFiles(ActionEvent e) {
         if (selectedFiles == null || selectedFiles.length == 0) {
-            log.append("❌ No has seleccionado ningún PDF.\n\n");
+            JOptionPane.showMessageDialog(this,
+                    "No has cargado ningún PDF.",
+                    "Advertencia",
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        File outDir = new File("pdf_Out");
-        outDir.mkdirs();
-
         for (File f : selectedFiles) {
-            if (!f.getName().toLowerCase().endsWith(".pdf")) continue;
+            if (!f.getName().toLowerCase().endsWith(".pdf"))
+                continue;
 
-            log.append("Procesando: " + f.getName() + "\n");
+            // --- PREGUNTAR DONDE GUARDAR ---
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Guardar PDF sin permisos");
+            chooser.setSelectedFile(new File(f.getName()));
+            chooser.setFileFilter(new FileNameExtensionFilter("PDF", "pdf"));
+
+            int option = chooser.showSaveDialog(this);
+
+            if (option != JFileChooser.APPROVE_OPTION)
+                continue;
+
+            File output = chooser.getSelectedFile();
+            if (!output.getName().toLowerCase().endsWith(".pdf")) {
+                output = new File(output.getAbsolutePath() + ".pdf");
+            }
 
             try (PDDocument document = Loader.loadPDF(f)) {
 
-                // 🔥 Eliminar permisos / restricciones
                 document.setAllSecurityToBeRemoved(true);
-
-                File output = new File(outDir, f.getName());
                 document.save(output);
 
-                log.append(" ✔ Permisos eliminados → Guardado en: pdf_Out/" + f.getName() + "\n\n");
-            }
-            catch (Exception ex) {
-                log.append(" ❌ Error procesando " + f.getName() + ": " + ex.getMessage() + "\n\n");
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Error procesando " + f.getName() + ":\n" + ex.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
             }
         }
+
+        JOptionPane.showMessageDialog(this,
+                "Proceso completado.",
+                "Listo",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     public static void main(String[] args) {
-        EventQueue.invokeLater(() -> {
+        javax.swing.SwingUtilities.invokeLater(() -> {
             new Remove_permision().setVisible(true);
         });
     }
