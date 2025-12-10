@@ -1,67 +1,118 @@
 package remove_permision;
 
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.EventQueue;
+import java.awt.Font;
+import java.awt.event.ActionEvent;
 import java.io.File;
-import java.io.IOException;
+
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
-public class Remove_permision
-{
-    public static void main(String[] args)
-    {
-        try {
-            ejecutar();
-        } catch (IOException e) {
-            System.err.println("Error eliminando permisos: " + e.getMessage());
+public class Remove_permision extends JFrame {
+
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	private JTextArea log;
+    private File[] selectedFiles;
+
+    public Remove_permision() {
+        setTitle("Quitar Permisos de PDF – PDFBox");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(600, 450);
+        setLocationRelativeTo(null);
+
+        initUI();
+    }
+
+    private void initUI() {
+        JPanel panel = new JPanel();
+        JButton btnSelect = new JButton("Seleccionar PDFs");
+        JButton btnProcess = new JButton("Quitar Permisos");
+
+        btnSelect.setFocusable(false);
+        btnProcess.setFocusable(false);
+
+        btnSelect.addActionListener(this::selectFiles);
+        btnProcess.addActionListener(this::processFiles);
+
+        panel.add(btnSelect);
+        panel.add(btnProcess);
+
+        log = new JTextArea();
+        log.setEditable(false);
+        log.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+        JScrollPane scroll = new JScrollPane(log);
+        scroll.setPreferredSize(new Dimension(580, 350));
+
+        add(panel, BorderLayout.NORTH);
+        add(scroll, BorderLayout.CENTER);
+    }
+
+    private void selectFiles(ActionEvent e) {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Seleccionar archivos PDF");
+        fileChooser.setMultiSelectionEnabled(true);
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Archivos PDF", "pdf"));
+
+        int result = fileChooser.showOpenDialog(this);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+            selectedFiles = fileChooser.getSelectedFiles();
+
+            log.append("Archivos seleccionados:\n");
+            for (File f : selectedFiles) {
+                log.append(" - " + f.getName() + "\n");
+            }
+            log.append("\n");
         }
     }
 
-    static void ejecutar() throws IOException
-    {
-        String INPUT_PATH = System.getProperty("user.dir") + "\\pdf_In";
-        String OUTPUT_PATH = System.getProperty("user.dir") + "\\pdf_Out";
-
-        new File(INPUT_PATH).mkdirs();
-        new File(OUTPUT_PATH).mkdirs();
-
-        File[] files = new File(INPUT_PATH).listFiles();
-
-        if (files == null)
-        {
-            System.out.println("No hay archivos en " + INPUT_PATH);
+    private void processFiles(ActionEvent e) {
+        if (selectedFiles == null || selectedFiles.length == 0) {
+            log.append("❌ No has seleccionado ningún PDF.\n\n");
             return;
         }
 
-        for (File f : files)
-        {
+        File outDir = new File("pdf_Out");
+        outDir.mkdirs();
+
+        for (File f : selectedFiles) {
             if (!f.getName().toLowerCase().endsWith(".pdf")) continue;
 
-            System.out.println("Procesando: " + f.getName());
+            log.append("Procesando: " + f.getName() + "\n");
 
-            PDDocument document = null;
+            try (PDDocument document = Loader.loadPDF(f)) {
 
-            try
-            {
-                // Cargar PDF (si tiene contraseña de usuario, necesita una)
-                document = Loader.loadPDF(f);
-
-                // ESTA ES LA LÍNEA IMPORTANTE
+                // 🔥 Eliminar permisos / restricciones
                 document.setAllSecurityToBeRemoved(true);
 
-                // Guardar PDF sin restricciones
-                document.save(OUTPUT_PATH + "\\" + f.getName());
+                File output = new File(outDir, f.getName());
+                document.save(output);
 
-                System.out.println(" → Permisos eliminados. Guardado en: pdf_Out\\" + f.getName());
+                log.append(" ✔ Permisos eliminados → Guardado en: pdf_Out/" + f.getName() + "\n\n");
             }
-            catch (Exception e)
-            {
-                System.err.println("Error procesando " + f.getName() + ": " + e.getMessage());
-            }
-            finally
-            {
-                if (document != null) document.close();
+            catch (Exception ex) {
+                log.append(" ❌ Error procesando " + f.getName() + ": " + ex.getMessage() + "\n\n");
             }
         }
+    }
+
+    public static void main(String[] args) {
+        EventQueue.invokeLater(() -> {
+            new Remove_permision().setVisible(true);
+        });
     }
 }
